@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  postgres-crm:
+    image: pgvector/pgvector:pg16 # postgres:12-alpine # 使用 alpine 版本，镜像体积更小，启动更快
+    container_name: yzb_postgres_dev
+    restart: always
+    ports:
+      - "5432:5432" # 宿主机端口:容器内端口 (如本地 5432 冲突，可改为 5433:5432)
+    environment:
+      POSTGRES_DB: yzb             # 默认创建的数据库名称
+      POSTGRES_USER: yzb_user         # 数据库用户名
+      POSTGRES_PASSWORD: YZB_DB2026 # 数据库密码
+      TZ: Asia/Shanghai               # 设置时区
+    volumes:
+      # 数据持久化挂载：防止容器重启后数据丢失
+      - postgres_data:/var/lib/postgresql/data
+      # 自动初始化脚本挂载：容器首次启动时会自动执行该目录下的 .sql 文件
+      - ./init-sql:/docker-entrypoint-initdb.d
+
+volumes:
+  postgres_data:
+    name: yzb_postgres_data # 命名数据卷，方便管理

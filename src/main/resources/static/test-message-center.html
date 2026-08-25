@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>消息中心测试</title>
+    <style>
+        body { font-family: "Microsoft YaHei", system-ui, sans-serif; max-width: 720px; margin: 24px auto; padding: 0 16px; color: #222; }
+        h1 { font-size: 22px; }
+        .note { background: #fff7e6; border: 1px solid #ffd591; border-radius: 8px; padding: 10px 14px; color: #874d00; }
+        section { margin-top: 24px; border: 1px solid #e0e0e0; border-radius: 10px; padding: 16px; }
+        h2 { font-size: 16px; margin: 0 0 12px; }
+        form { display: flex; flex-direction: column; gap: 10px; }
+        label { display: flex; flex-direction: column; font-size: 13px; color: #555; gap: 4px; }
+        input { padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+        button { padding: 10px; border: none; border-radius: 6px; background: #1677ff; color: #fff; font-size: 15px; cursor: pointer; }
+        button:hover { background: #0958d9; }
+        .out { background: #f6f8fa; border-radius: 6px; padding: 12px; font-size: 13px; white-space: pre-wrap; word-break: break-all; min-height: 40px; margin-top: 12px; }
+        .tip { font-size: 12px; color: #888; margin-top: 8px; }
+    </style>
+</head>
+<body>
+<h1>📨 消息中心测试（UC-028 / 设计文档 4.8）</h1>
+<div class="note">⚠️ 需要先登录并获取 Token。当前短信为 Mock 通道，消息仅站内触达（不通过短信额外提醒）。</div>
+
+<section>
+    <h2>1️⃣ 登录信息</h2>
+    <form id="form-token">
+        <label>JWT Token <input name="token" required placeholder="Bearer 或 原始 token"></label>
+        <button type="submit">保存 Token</button>
+    </form>
+    <pre id="out-token" class="out">（未设置 Token）</pre>
+</section>
+
+<section>
+    <h2>2️⃣ 我的消息</h2>
+    <form id="form-list">
+        <label>页码 <input name="page" value="1"></label>
+        <label>每页 <input name="size" value="20"></label>
+        <button type="submit">查询消息列表</button>
+    </form>
+    <pre id="out-list" class="out">（响应将显示在这里）</pre>
+</section>
+
+<section>
+    <h2>3️⃣ 未读消息数</h2>
+    <button id="btn-unread">查询未读数</button>
+    <pre id="out-unread" class="out">（响应将显示在这里）</pre>
+</section>
+
+<section>
+    <h2>4️⃣ 标记已读</h2>
+    <form id="form-read">
+        <label>消息 ID <input name="messageId" required placeholder="如 1"></label>
+        <button type="submit">标记单条已读</button>
+    </form>
+    <pre id="out-read" class="out">（响应将显示在这里）</pre>
+    <button id="btn-readall" style="margin-top:8px;">全部标记已读</button>
+    <pre id="out-readall" class="out">（响应将显示在这里）</pre>
+</section>
+
+<script>
+    let token = localStorage.getItem('msg_test_token') || '';
+
+    async function request(url, method, body) {
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) { headers['Authorization'] = 'Bearer ' + token; }
+        const res = await fetch(url, {
+            method,
+            headers,
+            body: body ? JSON.stringify(body) : undefined
+        });
+        const text = await res.text();
+        try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; }
+    }
+
+    document.getElementById('form-token').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        token = fd.get('token').trim().replace(/^Bearer\s+/i, '');
+        localStorage.setItem('msg_test_token', token);
+        document.getElementById('out-token').textContent = '已保存 Token（前 20 字符）: ' + token.slice(0, 20) + '...';
+    });
+
+    document.getElementById('form-list').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const out = document.getElementById('out-list');
+        out.textContent = '请求中...';
+        out.textContent = await request(`/api/messages?page=${fd.get('page')}&size=${fd.get('size')}`, 'GET');
+    });
+
+    document.getElementById('btn-unread').addEventListener('click', async () => {
+        const out = document.getElementById('out-unread');
+        out.textContent = '请求中...';
+        out.textContent = await request('/api/messages/unread-count', 'GET');
+    });
+
+    document.getElementById('form-read').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const out = document.getElementById('out-read');
+        out.textContent = '请求中...';
+        out.textContent = await request(`/api/messages/${fd.get('messageId').trim()}/read`, 'PUT');
+    });
+
+    document.getElementById('btn-readall').addEventListener('click', async () => {
+        const out = document.getElementById('out-readall');
+        out.textContent = '请求中...';
+        out.textContent = await request('/api/messages/read-all', 'PUT');
+    });
+</script>
+</body>
+</html>
