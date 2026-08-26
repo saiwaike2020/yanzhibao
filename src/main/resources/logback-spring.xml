@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =============================================================================
+  日志配置：logback-spring.xml
+  =============================================================================
+  - 统一日志 pattern：LOG_PATTERN（控制台与文件共用）
+  - 控制台 appender：CONSOLE（stdout）
+  - 滚动文件 appender：FILE —— 按日 + 大小 + gz 压缩 + 保留策略
+      * 按日：crm-{yyyy-MM-dd}.%i.log.gz
+      * 单文件上限：maxFileSize=100MB
+      * 保留天数：maxHistory=30
+      * 总容量上限：totalSizeCap=5GB
+  - 日志文件存储根目录：通过 application.yml 的 logging.file.path 读取，
+    可用环境变量 LOG_PATH 覆盖（默认 logs/）
+  - 日志级别：由 application.yml 的 logging.level 统一管理（根级别 + 包级别，
+    dev / prod 通过 profile 区分），此处仅兜底 root=INFO
+  =============================================================================
+-->
+<configuration>
+    <!-- 日志文件存储根目录：读取 logging.file.path，未配置时默认 logs（可用 LOG_PATH 环境变量覆盖） -->
+    <springProperty scope="context" name="LOG_PATH" source="logging.file.path" defaultValue="logs"/>
+
+    <!-- 统一日志 pattern（控制台与文件共用）：
+         %d          时间戳（ISO-8601，含时区偏移）
+         %5p         日志级别（右对齐 5 字符）
+         %t          线程名
+         %-40.40logger{39}  Logger 名（截断 40 字符）
+         %m%n        消息 + 换行 -->
+    <property name="LOG_PATTERN"
+              value="%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p ${PID:- } --- [%t] %-40.40logger{39} : %m%n"/>
+
+    <!-- 控制台 appender -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- 滚动文件 appender：按日 + 大小 + gz 压缩 + 保留策略 -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/crm.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <!-- 按日滚动，同一日文件超过 maxFileSize 时以 .%i 递增编号；历史文件 gz 压缩 -->
+            <fileNamePattern>${LOG_PATH}/crm-%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <!-- 单文件最大 100MB -->
+            <maxFileSize>100MB</maxFileSize>
+            <!-- 保留最近 30 天的归档文件 -->
+            <maxHistory>30</maxHistory>
+            <!-- 归档总容量上限 5GB，超出后删除最旧归档 -->
+            <totalSizeCap>5GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- 兜底根级别（实际级别由 application.yml logging.level 按 profile 控制） -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+</configuration>

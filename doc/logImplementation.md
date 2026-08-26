@@ -2,7 +2,7 @@
 
 > - 分析对象：`yanzhibao`（Spring Boot 3.2.12 + Spring Data JPA + Spring Security + PostgreSQL 16）
 > - 分析日期：2026-08
-> - 结论先行：本项目**未配置任何自定义日志策略**，完全依赖 Spring Boot 默认的 Logback 配置——仅**控制台输出**、级别为 **INFO**、**不落盘**、无滚动归档；代码中的日志点集中在少数业务 Service 与全局异常处理中。业务级审计日志（`audit_logs` 表）已建表但写入逻辑尚未接入业务代码。
+> - 结论先行（v3.7 已落地）：本项目现通过 `logback-spring.xml` + `application.yml` 的 `logging` 配置实现**控制台 + 滚动文件**日志（按日 + 大小 + gz 压缩 + 保留策略）、**统一日志 pattern**、**根级别 + 包级别且 dev/prod 用 profile 区分**，日志文件存储根目录可通过 `LOG_PATH` 环境变量配置；代码中的日志点集中在少数业务 Service 与全局异常处理中。业务级审计日志（`audit_logs` 表）已建表但写入逻辑尚未接入业务代码。
 
 ---
 
@@ -44,11 +44,13 @@ public class AuthService {
 
 ## 2. 日志级别（Level）配置
 
-### 2.1 当前配置
+### 2.1 当前配置（v3.7 已实现）
 
-- `src/main/resources/application.yml` 中**没有任何 `logging` 配置段**（无 `logging.level.*`、无 `logging.file.*`）。
-- 因此全局日志级别为 Spring Boot 默认的 **`INFO`**。
-- 未按包 / 类 / profile（dev / prod）区分级别。
+- `src/main/resources/application.yml` 已配置 `logging.level`：**根级别 + 包级别**（`root`、`com.crm`、`org.springframework`、`org.hibernate` 等）。
+- **dev / prod 用 profile 区分**（多文档 profile 段）：
+  - `dev`（默认，`spring.profiles.default: dev`）：根级别 `DEBUG`，`com.crm` `DEBUG`，`org.hibernate.SQL` `DEBUG`（打印 SQL）；
+  - `prod`（`SPRING_PROFILES_ACTIVE=prod`）：根级别 `INFO`，`com.crm` `INFO`，`org.hibernate.SQL` `WARN`（不打印 SQL）。
+- 兜底级别由 `logback-spring.xml` 的 `<root level="INFO">` 保证。
 
 ### 2.2 代码中使用到的级别
 
@@ -87,11 +89,14 @@ logging:
 
 ## 3. 日志文件保存
 
-### 3.1 当前配置
+### 3.1 当前配置（v3.7 已实现）
 
-- **无文件输出**：未配置 `logging.file.name` / `logging.file.path`，也没有任何 File / RollingFile appender。
-- 所有日志**仅输出到控制台（stdout）**，进程重启后即丢失，无持久化、无滚动归档、无保留策略。
-- docker / 部署层面：`docker/docker-compose.yml` 中仅 postgres 容器挂载数据卷，应用日志未挂载任何日志卷。
+- **滚动文件输出**：`src/main/resources/logback-spring.xml` 已配置 `RollingFileAppender`：
+  - 按日滚动：`crm-%d{yyyy-MM-dd}.%i.log.gz`；
+  - 单文件上限 `maxFileSize=100MB`、保留 `maxHistory=30` 天、总容量上限 `totalSizeCap=5GB`，历史文件 **gz 压缩**；
+  - 同时保留**控制台输出**（`ConsoleAppender`）。
+- **日志根目录可配置**：`application.yml` 中 `logging.file.path: ${LOG_PATH:logs}`，可用环境变量 / 系统属性 `LOG_PATH` 覆盖（默认 `logs/`）。
+- docker / 部署层面：`docker/docker-compose.yml` 中仅 postgres 容器挂载数据卷，应用日志未挂载日志卷（可通过 `LOG_PATH` 指向持久化目录）。
 
 ### 3.2 配置方式（现状未启用，提供参考）
 
@@ -116,12 +121,12 @@ logging:
 
 ## 4. 日志格式
 
-### 4.1 当前格式（Spring Boot 默认 `PatternLayoutEncoder`）
+### 4.1 当前格式（v3.7 已实现）
 
-默认控制台格式：
+统一日志 pattern 在 `logback-spring.xml` 中以 `<property name="LOG_PATTERN">` 定义，**控制台与文件 appender 共用**：
 
 ```
-%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p ${PID} --- [%t] %-40.40logger{39} : %m%n
+%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p ${PID:- } --- [%t] %-40.40logger{39} : %m%n
 ```
 
 字段说明：
@@ -240,10 +245,10 @@ logging:
 | :--- | :--- | :--- |
 | P0 | 接入业务审计日志写入 | 在敏感操作（角色变更、授权、审批、系统参数调整）处调用 `AuditService` 落库 |
 | P0 | 移除 Mock 短信日志中的验证码明文 | 接入真实短信网关后删除 `sendCode` 内明文输出 |
-| P1 | 配置 `logback-spring.xml` | 控制台 + 滚动文件（按日 + 大小 + 压缩 + 保留策略） |
-| P1 | 配置 `logging.level` | 根级别 + 包级别，dev/prod 用 profile 区分 |
+| P1 | 配置 `logback-spring.xml` | ✅ **已完成**：控制台 + 滚动文件（按日 + 大小 + 压缩 + 保留策略） |
+| P1 | 配置 `logging.level` | ✅ **已完成**：根级别 + 包级别，dev/prod 用 profile 区分 |
 | P2 | 引入 MDC 请求追踪 | `OncePerRequestFilter` 注入 `requestId` / `userId`，pattern 中输出 |
-| P2 | 统一日志 pattern | 抽取为 `<property>` 复用，避免散落 |
+| P2 | 统一日志 pattern | ✅ **已完成**：`<property name="LOG_PATTERN">` 供控制台与文件复用 |
 | P3 | 结构化 JSON 输出 | 对接日志平台时引入 `logstash-logback-encoder` |
 | P3 | 关键路径补齐日志 | Controller 请求入参（脱敏）、鉴权失败、资源读写等 |
 
