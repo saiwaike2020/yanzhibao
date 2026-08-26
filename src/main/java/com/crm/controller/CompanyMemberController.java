@@ -44,6 +44,22 @@ public class CompanyMemberController {
         return ApiResponse.ok();
     }
 
+    /** 批准加入申请（企业所有者/管理员，UC-032） */
+    @PostMapping("/{memberId}/approve")
+    public ApiResponse<Void> approveJoinRequest(
+            @PathVariable Long companyId, @PathVariable Long memberId) {
+        companyMemberService.approveJoinRequest(companyId, SecurityUtils.getCurrentUserId(), memberId);
+        return ApiResponse.ok();
+    }
+
+    /** 拒绝加入申请（企业所有者/管理员，UC-032） */
+    @PostMapping("/{memberId}/reject")
+    public ApiResponse<Void> rejectJoinRequest(
+            @PathVariable Long companyId, @PathVariable Long memberId) {
+        companyMemberService.rejectJoinRequest(companyId, SecurityUtils.getCurrentUserId(), memberId);
+        return ApiResponse.ok();
+    }
+
     /** 成员列表 */
     @GetMapping
     public ApiResponse<PageResponse<CompanyMemberResponse>> listMembers(

@@ -1,7 +1,11 @@
 package com.crm.controller;
 
+import com.crm.common.enums.OwnerType;
 import com.crm.dto.admin.AssignAuditorRequest;
 import com.crm.dto.admin.AuditorResponse;
+import com.crm.dto.admin.ReviewCompanyApprovalRequest;
+import com.crm.dto.admin.StorageQuotaRequest;
+import com.crm.dto.admin.StorageQuotaResponse;
 import com.crm.dto.admin.SystemSettingRequest;
 import com.crm.dto.admin.SystemSettingResponse;
 import com.crm.dto.admin.UpdateAuditorRequest;
@@ -11,6 +15,9 @@ import com.crm.dto.common.ApiResponse;
 import com.crm.dto.common.PageQueryRequest;
 import com.crm.dto.common.PageResponse;
 import com.crm.dto.user.UserProfileResponse;
+import com.crm.entity.CompanyApproval;
+import com.crm.security.SecurityUtils;
+import com.crm.service.CompanyService;
 import com.crm.service.SystemAdminService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -35,6 +42,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class SystemAdminController {
 
     private final SystemAdminService systemAdminService;
+    private final CompanyService companyService;
 
     /** 用户列表（分页 / 关键字查询） */
     @GetMapping("/users")
@@ -112,6 +120,43 @@ public class SystemAdminController {
     @PutMapping("/settings")
     public ApiResponse<Void> updateSystemSetting(@Valid @RequestBody SystemSettingRequest request) {
         systemAdminService.updateSystemSetting(request);
+        return ApiResponse.ok();
+    }
+
+    /** 设置 / 调整个体存储配额（UC-031，优先于全局默认配额） */
+    @PutMapping("/storage-quotas")
+    public ApiResponse<Void> setStorageQuota(@Valid @RequestBody StorageQuotaRequest request) {
+        systemAdminService.setStorageQuota(request, SecurityUtils.getCurrentUserId());
+        return ApiResponse.ok();
+    }
+
+    /** 查询个体存储配额 */
+    @GetMapping("/storage-quotas/{quotaType}/{subjectId}")
+    public ApiResponse<StorageQuotaResponse> getStorageQuota(
+            @PathVariable OwnerType quotaType, @PathVariable Long subjectId) {
+        return ApiResponse.ok(systemAdminService.getStorageQuota(quotaType, subjectId));
+    }
+
+    /** 移除个体存储配额（恢复使用全局默认配额） */
+    @DeleteMapping("/storage-quotas/{quotaType}/{subjectId}")
+    public ApiResponse<Void> removeStorageQuota(
+            @PathVariable OwnerType quotaType, @PathVariable Long subjectId) {
+        systemAdminService.removeStorageQuota(quotaType, subjectId);
+        return ApiResponse.ok();
+    }
+
+    /** 待审批企业变更申请列表（UC-033） */
+    @GetMapping("/company-approvals/pending")
+    public ApiResponse<List<CompanyApproval>> listPendingCompanyApprovals() {
+        return ApiResponse.ok(companyService.listPendingApprovals());
+    }
+
+    /** 审批企业变更申请（系统管理员或有权限的审计人员，UC-033） */
+    @PostMapping("/company-approvals/{approvalId}/review")
+    public ApiResponse<Void> reviewCompanyApproval(
+            @PathVariable Long approvalId, @Valid @RequestBody ReviewCompanyApprovalRequest request) {
+        companyService.reviewCompanyApproval(
+                approvalId, SecurityUtils.getCurrentUserId(), request.getApproved(), request.getNote());
         return ApiResponse.ok();
     }
 }

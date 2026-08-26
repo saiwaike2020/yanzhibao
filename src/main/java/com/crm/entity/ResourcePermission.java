@@ -9,6 +9,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -21,11 +22,15 @@ import lombok.Setter;
  *
  * <p>授权主体支持分组（GROUP）和用户（USER）；权限级别 READ / WRITE / OWNER。
  * 唯一约束 (resource_id, grantee_type, grantee_id)；撤销权限为删除记录。
+ * <p>权限有效期：起始可用日期 {@code validFrom} 必填，过期时间 {@code validUntil} 为空表示一直有效；
+ * 权限判定仅统计当前时间处于 [validFrom, validUntil] 区间内的记录（设计文档 6.4 / 6.6）。
  */
 @Getter
 @Setter
 @Entity
-@Table(name = "resource_permissions")
+@Table(name = "resource_permissions", indexes = {
+        @Index(name = "idx_grantee_validity", columnList = "resource_id, permission_level, valid_from, valid_until")
+})
 public class ResourcePermission {
 
     /** 权限记录 ID（主键） */
@@ -50,6 +55,14 @@ public class ResourcePermission {
     @Enumerated(EnumType.STRING)
     @Column(name = "permission_level", nullable = false, length = 20)
     private PermissionLevel permissionLevel;
+
+    /** 起始可用日期（必填） */
+    @Column(name = "valid_from", nullable = false)
+    private LocalDateTime validFrom;
+
+    /** 过期时间（为空表示一直有效） */
+    @Column(name = "valid_until")
+    private LocalDateTime validUntil;
 
     /** 授权人用户 ID */
     @Column(name = "granted_by", nullable = false)

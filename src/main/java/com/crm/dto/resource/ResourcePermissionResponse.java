@@ -26,6 +26,12 @@ public class ResourcePermissionResponse {
     /** 权限级别 */
     private PermissionLevel permissionLevel;
 
+    /** 起始可用日期（必填） */
+    private LocalDateTime validFrom;
+
+    /** 过期时间（为空表示一直有效） */
+    private LocalDateTime validUntil;
+
     /** 授权人用户 ID */
     private Long grantedBy;
 

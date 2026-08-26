@@ -16,6 +16,7 @@ import com.crm.entity.SysUser;
 import com.crm.repository.CompanyMemberRepository;
 import com.crm.repository.CompanyRepository;
 import com.crm.repository.SysUserRepository;
+import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -93,6 +94,45 @@ public class CompanyMemberService {
         for (CompanyMember admin : admins) {
             messageService.sendJoinRequestMessage(admin.getUserId(), applicantUserId, companyId, company.getName());
         }
+    }
+
+    /**
+     * 批准加入申请（UC-032）：成员状态 INVITED → ACTIVE。
+     * 由企业所有者或管理员操作，并向申请用户发送结果消息。
+     */
+    @Transactional
+    public void approveJoinRequest(Long companyId, Long operatorUserId, Long memberId) {
+        ensureCompanyAdmin(companyId, operatorUserId);
+        CompanyMember member = companyMemberRepository.findByCompanyIdAndMemberId(companyId, memberId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
+        if (member.getStatus() != MemberStatus.INVITED) {
+            throw new BusinessException(ErrorCode.APPROVAL_ALREADY_HANDLED);
+        }
+        member.setStatus(MemberStatus.ACTIVE);
+        member.setJoinedAt(LocalDateTime.now());
+        companyMemberRepository.save(member);
+
+        messageService.sendSystemMessage(member.getUserId(), "企业加入申请已批准",
+                "您申请加入的企业已批准您的申请，现已正式成为企业成员。");
+    }
+
+    /**
+     * 拒绝加入申请（UC-032）：成员状态 INVITED → EXITED。
+     * 由企业所有者或管理员操作，并向申请用户发送结果消息。
+     */
+    @Transactional
+    public void rejectJoinRequest(Long companyId, Long operatorUserId, Long memberId) {
+        ensureCompanyAdmin(companyId, operatorUserId);
+        CompanyMember member = companyMemberRepository.findByCompanyIdAndMemberId(companyId, memberId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
+        if (member.getStatus() != MemberStatus.INVITED) {
+            throw new BusinessException(ErrorCode.APPROVAL_ALREADY_HANDLED);
+        }
+        member.setStatus(MemberStatus.EXITED);
+        companyMemberRepository.save(member);
+
+        messageService.sendSystemMessage(member.getUserId(), "企业加入申请被拒绝",
+                "您申请加入的企业拒绝了您的申请。");
     }
 
     /** 成员列表 */

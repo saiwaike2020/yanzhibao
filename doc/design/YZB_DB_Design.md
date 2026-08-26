@@ -121,6 +121,42 @@ erDiagram
 
 - **索引设置**：主键 `message_id`，普通索引 `idx_msg_user_created (user_id, created_at)`、`idx_msg_user_read (user_id, is_read)`。
 
+#### 3.1.5 系统参数表 (`system_settings`)
+
+存储系统级全局配置参数（K/V 结构），如个人 / 企业存储配额上限等，由系统管理员维护。
+
+| 字段名 | 数据类型 | 允许空 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- | :--- |
+| `id` | BIGINT | 否 | 自动生成 | 参数ID（主键） |
+| `setting_key` | VARCHAR(64) | 否 | - | 参数键（唯一） |
+| `setting_value` | VARCHAR(255) | 否 | '' | 参数值 |
+| `description` | VARCHAR(255) | 是 | '' | 参数说明 |
+| `updated_by` | BIGINT | 是 | NULL | 最近更新人用户ID |
+| `created_at` | TIMESTAMP | 否 | CURRENT_TIMESTAMP | 创建时间 |
+| `updated_at` | TIMESTAMP | 否 | CURRENT_TIMESTAMP | 更新时间 |
+
+- **索引设置**：主键 `id`，唯一索引 `uk_setting_key (setting_key)`。
+- **预置参数**：
+  - `storage.quota.personal`：个人存储上限（字节），默认 `209715200`（200MB）；
+  - `storage.quota.company`：企业存储上限（字节），默认 `10737418240`（10GB）。
+
+#### 3.1.6 个体存储配额表 (`storage_quotas`)
+
+存储**单个用户 / 个别企业**的专属存储配额（字节），**优先于**全局默认配额；由系统管理员维护（UC-031）。
+
+| 字段名 | 数据类型 | 允许空 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- | :--- |
+| `id` | BIGINT | 否 | 自动生成 | 配额记录ID（主键） |
+| `quota_type` | VARCHAR(20) | 否 | - | 主体类型：USER（用户）/ COMPANY（企业） |
+| `subject_id` | BIGINT | 否 | - | 主体ID（用户ID或企业ID） |
+| `quota_bytes` | BIGINT | 否 | - | 专属存储上限（字节） |
+| `updated_by` | BIGINT | 是 | NULL | 最近更新人用户ID（系统管理员） |
+| `created_at` | TIMESTAMP | 否 | CURRENT_TIMESTAMP | 创建时间 |
+| `updated_at` | TIMESTAMP | 否 | CURRENT_TIMESTAMP | 更新时间 |
+
+- **索引设置**：主键 `id`，唯一约束 `uk_quota_subject (quota_type, subject_id)`。
+- **配额优先级**：**个体配额 > 全局默认配额**（`system_settings`）；未设置个体配额的主体使用全局默认值。
+
 ---
 
 ### 3.2 企业与组织架构模块
@@ -141,6 +177,27 @@ erDiagram
 | `updated_at` | TIMESTAMP | 否 | CURRENT_TIMESTAMP | 更新时间 |
 
 - **索引设置**：主键 `company_id`，唯一索引 `uk_company_no (company_no)`，普通索引 `idx_owner_user (owner_user_id)`。
+
+#### 3.2.2 企业变更审批表 (`company_approvals`)
+
+记录企业**注销**与**所有权转让**的审批流程（v3.5）：由企业所有者发起，须经**系统管理员或有权限的审计人员**批准后方可生效（UC-033）。
+
+| 字段名 | 数据类型 | 允许空 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- | :--- |
+| `approval_id` | BIGINT | 否 | 自动生成 | 审批记录ID（主键） |
+| `company_id` | BIGINT | 否 | - | 关联 `companies.company_id` |
+| `approval_type` | VARCHAR(20) | 否 | - | 审批类型：`DISSOLVE`（企业注销）/ `TRANSFER`（所有权转让） |
+| `requester_user_id` | BIGINT | 否 | - | 发起人用户ID（企业所有者） |
+| `target_user_id` | BIGINT | 是 | NULL | 转让目标用户ID（仅 `TRANSFER` 类型） |
+| `status` | VARCHAR(20) | 否 | 'PENDING' | 状态：`PENDING`（待审批）/ `APPROVED`（已批准）/ `REJECTED`（已拒绝） |
+| `reviewed_by` | BIGINT | 是 | NULL | 审批人用户ID（系统管理员或有权限的审计人员） |
+| `review_note` | VARCHAR(255) | 是 | NULL | 审批意见 |
+| `reviewed_at` | TIMESTAMP | 是 | NULL | 审批时间 |
+| `created_at` | TIMESTAMP | 否 | CURRENT_TIMESTAMP | 申请创建时间 |
+| `updated_at` | TIMESTAMP | 否 | CURRENT_TIMESTAMP | 更新时间 |
+
+- **索引设置**：主键 `approval_id`，普通索引 `idx_approval_company (company_id, status)`、`idx_approval_status (status, created_at)`。
+- **审批人权限**：系统管理员（`system_role=SYSTEM_ADMIN`），或有权限的审计人员（`audit_scope` 为 `ALL` / `ENTERPRISE_USERS`，且 `scope_details.allowed_company_ids` 未限定或包含该企业）。
 
 ---
 
@@ -189,7 +246,7 @@ erDiagram
 
 #### 3.3.3 资源显式授权表 (`resource_permissions`)
 
-将资源权限（READ / WRITE / OWNER）显式授权给分组或用户。**所有权关系本身由 `resource_owners` 维护**，本表用于对非所有者进行细粒度授权（含显式授予完整操作权限 OWNER，不改变所有权关系）。
+将资源权限（READ / WRITE / OWNER）显式授权给分组或用户。**所有权关系本身由 `resource_owners` 维护**，本表用于对非所有者进行细粒度授权（含显式授予完整操作权限 OWNER，不改变所有权关系）。**每条授权均含有效期**：起始可用日期 `valid_from` 必填，过期时间 `valid_until` 可选（为空表示一直有效）。
 
 | 字段名 | 数据类型 | 允许空 | 默认值 | 说明 |
 | :--- | :--- | :--- | :--- | :--- |
@@ -198,11 +255,14 @@ erDiagram
 | `grantee_type` | VARCHAR(20) | 否 | - | 授权主体类型：GROUP / USER |
 | `grantee_id` | BIGINT | 否 | - | 授权主体ID（分组ID或用户ID） |
 | `permission_level` | VARCHAR(20) | 否 | - | 权限级别：READ, WRITE, OWNER |
+| `valid_from` | TIMESTAMP | 否 | - | **起始可用日期（必填）** |
+| `valid_until` | TIMESTAMP | 是 | NULL | 过期时间（**为空表示一直有效**） |
 | `granted_by` | BIGINT | 否 | - | 授权人用户ID |
 | `created_at` | TIMESTAMP | 否 | CURRENT_TIMESTAMP | 创建时间 |
 | `updated_at` | TIMESTAMP | 否 | CURRENT_TIMESTAMP | 更新时间 |
 
-- **索引设置**：主键 `permission_id`，唯一索引 `uk_resource_grantee (resource_id, grantee_type, grantee_id)`，普通索引 `idx_grantee_lookup (grantee_type, grantee_id)`。
+- **索引设置**：主键 `permission_id`，唯一索引 `uk_resource_grantee (resource_id, grantee_type, grantee_id)`，普通索引 `idx_grantee_lookup (grantee_type, grantee_id)`、`idx_grantee_validity (resource_id, permission_level, valid_from, valid_until)`。
+- **有效期规则**：`valid_from` 必填；`valid_until` 为空表示永久有效；权限判定仅统计当前时间处于 `[valid_from, valid_until]` 区间内的授权记录。
 
 ---
 
@@ -275,9 +335,14 @@ FROM (
     FROM resource_permissions rp
     INNER JOIN ResourceHierarchy rh ON rp.resource_id = rh.resource_id
     WHERE
-        (rp.grantee_type = 'USER' AND rp.grantee_id = 101)
-        OR
-        (rp.grantee_type = 'GROUP' AND rp.grantee_id IN (SELECT group_id FROM UserGroupIds))
+        -- 仅统计处于有效期内的授权：valid_from <= 当前时间，且 valid_until 为空或 >= 当前时间
+        rp.valid_from <= CURRENT_TIMESTAMP
+        AND (rp.valid_until IS NULL OR rp.valid_until >= CURRENT_TIMESTAMP)
+        AND (
+            (rp.grantee_type = 'USER' AND rp.grantee_id = 101)
+            OR
+            (rp.grantee_type = 'GROUP' AND rp.grantee_id IN (SELECT group_id FROM UserGroupIds))
+        )
 ) AS CombinedPermissions;
 ```
 
@@ -520,7 +585,8 @@ CREATE TRIGGER trg_resource_owners_upd BEFORE UPDATE ON resource_owners FOR EACH
 
 -- -----------------------------------------------------------------------------
 -- 11. 资源显式授权表 (resource_permissions)
--- 说明：所有权关系由 resource_owners 维护；本表负责 READ/WRITE/OWNER 显式授权。
+-- 说明：所有权关系由 resource_owners 维护；本表负责 READ/WRITE/OWNER 显式授权
+--       （含有效期：valid_from 必填，valid_until 为空则一直有效）。
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS resource_permissions (
   permission_id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
@@ -528,12 +594,15 @@ CREATE TABLE IF NOT EXISTS resource_permissions (
   grantee_type VARCHAR(20) NOT NULL,
   grantee_id BIGINT NOT NULL,
   permission_level VARCHAR(20) NOT NULL,
+  valid_from TIMESTAMP NOT NULL,
+  valid_until TIMESTAMP DEFAULT NULL,
   granted_by BIGINT NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uk_resource_grantee ON resource_permissions(resource_id, grantee_type, grantee_id);
 CREATE INDEX IF NOT EXISTS idx_grantee_lookup ON resource_permissions(grantee_type, grantee_id);
+CREATE INDEX IF NOT EXISTS idx_grantee_validity ON resource_permissions(resource_id, permission_level, valid_from, valid_until);
 
 DROP TRIGGER IF EXISTS trg_resource_permissions_upd ON resource_permissions;
 CREATE TRIGGER trg_resource_permissions_upd BEFORE UPDATE ON resource_permissions FOR EACH ROW EXECUTE FUNCTION update_timestamp_column();
@@ -618,6 +687,71 @@ CREATE TABLE IF NOT EXISTS user_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_msg_user_created ON user_messages(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_msg_user_read ON user_messages(user_id, is_read);
+
+-- -----------------------------------------------------------------------------
+-- 16. 系统参数表 (system_settings)
+-- 说明：K/V 结构存储系统级配置，如个人/企业存储配额上限，由系统管理员维护。
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS system_settings (
+  id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+  setting_key VARCHAR(64) NOT NULL,
+  setting_value VARCHAR(255) NOT NULL DEFAULT '',
+  description VARCHAR(255) DEFAULT '',
+  updated_by BIGINT DEFAULT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_setting_key ON system_settings(setting_key);
+
+DROP TRIGGER IF EXISTS trg_system_settings_upd ON system_settings;
+CREATE TRIGGER trg_system_settings_upd BEFORE UPDATE ON system_settings FOR EACH ROW EXECUTE FUNCTION update_timestamp_column();
+
+-- 预置存储配额参数：storage.quota.personal=209715200(200MB), storage.quota.company=10737418240(10GB)
+INSERT INTO system_settings (setting_key, setting_value, description) VALUES
+  ('storage.quota.personal', '209715200', '个人存储上限（字节），默认 200MB'),
+  ('storage.quota.company', '10737418240', '企业存储上限（字节），默认 10GB')
+ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value;
+
+-- -----------------------------------------------------------------------------
+-- 17. 个体存储配额表 (storage_quotas)
+-- 说明：单个用户/个别企业的专属存储上限（字节），优先于全局默认配额，由系统管理员维护。
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS storage_quotas (
+  id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+  quota_type VARCHAR(20) NOT NULL,
+  subject_id BIGINT NOT NULL,
+  quota_bytes BIGINT NOT NULL,
+  updated_by BIGINT DEFAULT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uk_quota_subject UNIQUE (quota_type, subject_id)
+);
+
+DROP TRIGGER IF EXISTS trg_storage_quotas_upd ON storage_quotas;
+CREATE TRIGGER trg_storage_quotas_upd BEFORE UPDATE ON storage_quotas FOR EACH ROW EXECUTE FUNCTION update_timestamp_column();
+
+-- -----------------------------------------------------------------------------
+-- 18. 企业变更审批表 (company_approvals)
+-- 说明：企业注销/所有权转让的审批流程记录（v3.5），由系统管理员或有权限的审计人员审批。
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS company_approvals (
+  approval_id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+  company_id BIGINT NOT NULL,
+  approval_type VARCHAR(20) NOT NULL,
+  requester_user_id BIGINT NOT NULL,
+  target_user_id BIGINT DEFAULT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+  reviewed_by BIGINT DEFAULT NULL,
+  review_note VARCHAR(255) DEFAULT NULL,
+  reviewed_at TIMESTAMP DEFAULT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_approval_company ON company_approvals(company_id, status);
+CREATE INDEX IF NOT EXISTS idx_approval_status ON company_approvals(status, created_at);
+
+DROP TRIGGER IF EXISTS trg_company_approvals_upd ON company_approvals;
+CREATE TRIGGER trg_company_approvals_upd BEFORE UPDATE ON company_approvals FOR EACH ROW EXECUTE FUNCTION update_timestamp_column();
 
 -- =============================================================================
 -- 预置初始化数据 (PostgreSQL 的 ON CONFLICT 语法)

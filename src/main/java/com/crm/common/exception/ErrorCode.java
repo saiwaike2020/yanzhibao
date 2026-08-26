@@ -40,6 +40,10 @@ public enum ErrorCode {
     MEMBER_NOT_FOUND(1205, "成员不存在或已退出"),
     OWNER_ROLE_NOT_CHANGEABLE(1206, "企业所有者角色不可直接更改，请先进行企业所有权转让"),
     INVITE_TARGET_EXISTS(1207, "目标用户已在该企业中"),
+    APPROVAL_NOT_FOUND(1208, "审批申请不存在"),
+    APPROVAL_ALREADY_HANDLED(1209, "该申请已处理"),
+    NO_APPROVAL_PERMISSION(1210, "无审批权限"),
+    NOT_COMPANY_MEMBER(1211, "您不是该企业成员"),
 
     // ---- 分组 / 授权 ----
     GROUP_NOT_FOUND(1301, "分组不存在"),
@@ -59,9 +63,17 @@ public enum ErrorCode {
     OWNER_ALREADY_EXISTS(1408, "目标主体已是该资源的所有者"),
     OWNERSHIP_VALIDITY_INVALID(1409, "过期时间不能早于起始可用日期"),
     OWNERSHIP_ENDED(1410, "该所有权关系已过期或已撤销"),
+    PERMISSION_ALREADY_EXISTS(1411, "该授权主体已有资源权限记录，请直接修改"),
+    ORIGINAL_OWNER_NOT_FOUND(1412, "目标用户不是该资源的原所有者"),
 
     // ---- 消息中心 ----
-    MESSAGE_NOT_FOUND(1501, "消息不存在");
+    MESSAGE_NOT_FOUND(1501, "消息不存在"),
+
+    // ---- 系统参数 / 存储配额 ----
+    SETTING_NOT_FOUND(1601, "系统参数不存在"),
+    STORAGE_QUOTA_EXCEEDED(1602, "存储空间不足，已达到配额上限"),
+    INVALID_QUOTA_VALUE(1603, "存储配额必须为正整数"),
+    STORAGE_QUOTA_NOT_FOUND(1604, "该主体未设置个体存储配额");
 
     private final int code;
     private final String message;

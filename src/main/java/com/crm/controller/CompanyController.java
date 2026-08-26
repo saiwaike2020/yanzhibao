@@ -53,18 +53,18 @@ public class CompanyController {
         return ApiResponse.ok(companyService.updateCompany(companyId, request));
     }
 
-    /** 转让企业所有权（仅企业所有者） */
+    /** 发起企业所有权转让申请（企业所有者发起，系统管理员/有权限审计人员审批，UC-033） */
     @PostMapping("/{companyId}/transfer")
-    public ApiResponse<Void> transferOwnership(
+    public ApiResponse<Void> applyTransferOwnership(
             @PathVariable Long companyId, @Valid @RequestBody TransferCompanyRequest request) {
-        companyService.transferOwnership(companyId, request);
+        companyService.applyTransferOwnership(companyId, SecurityUtils.getCurrentUserId(), request);
         return ApiResponse.ok();
     }
 
-    /** 解散企业（仅企业所有者，UC-018） */
+    /** 发起企业注销申请（企业所有者发起，系统管理员/有权限审计人员审批，UC-018/UC-033） */
     @PostMapping("/{companyId}/dissolve")
-    public ApiResponse<Void> dissolveCompany(@PathVariable Long companyId) {
-        companyService.dissolveCompany(companyId);
+    public ApiResponse<Void> applyDissolveCompany(@PathVariable Long companyId) {
+        companyService.applyDissolveCompany(companyId, SecurityUtils.getCurrentUserId());
         return ApiResponse.ok();
     }
 }

@@ -3,6 +3,7 @@ package com.crm.controller;
 import com.crm.dto.common.ApiResponse;
 import com.crm.dto.resource.GrantPermissionRequest;
 import com.crm.dto.resource.ResourcePermissionResponse;
+import com.crm.dto.resource.UpdateOriginalOwnerPermissionRequest;
 import com.crm.dto.resource.UpdatePermissionRequest;
 import com.crm.security.SecurityUtils;
 import com.crm.service.ResourcePermissionService;
@@ -65,6 +66,17 @@ public class ResourcePermissionController {
     public ApiResponse<Void> revokePermission(
             @PathVariable Long resourceId, @PathVariable Long permissionId) {
         resourcePermissionService.revokePermission(resourceId, permissionId);
+        return ApiResponse.ok();
+    }
+
+    /** 企业管理员调整原所有者访问权限（无权/只读/可写，UC-034） */
+    @PutMapping("/original-owner/{userId}")
+    public ApiResponse<Void> setOriginalOwnerPermission(
+            @PathVariable Long resourceId,
+            @PathVariable Long userId,
+            @Valid @RequestBody UpdateOriginalOwnerPermissionRequest request) {
+        resourcePermissionService.setOriginalOwnerPermission(
+                resourceId, SecurityUtils.getCurrentUserId(), userId, request.getPermissionLevel());
         return ApiResponse.ok();
     }
 }
