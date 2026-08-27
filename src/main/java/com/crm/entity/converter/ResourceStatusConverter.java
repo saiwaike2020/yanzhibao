@@ -6,7 +6,7 @@ import jakarta.persistence.Converter;
 
 /**
  * {@link ResourceStatus} 与数据库 SMALLINT 的转换（resources.status）。
- * 1-正常 ACTIVE, 2-已归档 ARCHIVED, 3-已删除 DELETED。
+ * 1-正常 ACTIVE, 2-已归档 ARCHIVED, 3-已删除 DELETED, 4-待处理 UPLOADED, 5-处理完成 PROCESSED。
  */
 @Converter(autoApply = true)
 public class ResourceStatusConverter implements AttributeConverter<ResourceStatus, Integer> {
@@ -20,6 +20,8 @@ public class ResourceStatusConverter implements AttributeConverter<ResourceStatu
             case ACTIVE -> 1;
             case ARCHIVED -> 2;
             case DELETED -> 3;
+            case UPLOADED -> 4;
+            case PROCESSED -> 5;
         };
     }
 
@@ -32,6 +34,8 @@ public class ResourceStatusConverter implements AttributeConverter<ResourceStatu
             case 1 -> ResourceStatus.ACTIVE;
             case 2 -> ResourceStatus.ARCHIVED;
             case 3 -> ResourceStatus.DELETED;
+            case 4 -> ResourceStatus.UPLOADED;
+            case 5 -> ResourceStatus.PROCESSED;
             default -> throw new IllegalArgumentException("未知资源状态码: " + code);
         };
     }

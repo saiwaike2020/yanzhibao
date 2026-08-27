@@ -239,8 +239,8 @@ erDiagram
 | `creator_user_id` | BIGINT | 否 | - | 创建人用户ID（仅记录创建者，不代表唯一所有者） |
 | `file_size` | BIGINT | 是 | 0 | 文件大小（字节） |
 | `file_type` | VARCHAR(50) | 是 | '' | 文件 MIME 类型 |
-| `file_path` | VARCHAR(512) | 是 | '' | 文件存储路径 |
-| `status` | SMALLINT | 否 | 1 | 状态：1-正常, 2-已归档, 3-已删除 |
+| `file_key` | VARCHAR(512) | 是 | '' | **文件相对抽象存储标识符**（如 `USR123/2026/08/26/xxx.pdf`；不存绝对路径，v3.8） |
+| `status` | SMALLINT | 否 | 1 | 状态：1-正常, 2-已归档, 3-已删除, 4-待处理（UPLOADED）, 5-处理完成（PROCESSED） |
 | `valid_from` | TIMESTAMP | 否 | CURRENT_TIMESTAMP | 记录生效起始时间 |
 | `valid_until` | TIMESTAMP | 是 | NULL | 记录失效时间（NULL 一直有效；删除/归档设此字段） |
 | `created_at` | TIMESTAMP | 否 | CURRENT_TIMESTAMP | 创建时间 |
@@ -589,7 +589,7 @@ CREATE TABLE IF NOT EXISTS resources (
   creator_user_id BIGINT NOT NULL,
   file_size BIGINT DEFAULT 0,
   file_type VARCHAR(50) DEFAULT '',
-  file_path VARCHAR(512) DEFAULT '',
+  file_key VARCHAR(512) DEFAULT '',
   status SMALLINT NOT NULL DEFAULT 1,
   valid_from TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   valid_until TIMESTAMP DEFAULT NULL,

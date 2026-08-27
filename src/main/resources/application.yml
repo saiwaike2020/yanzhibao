@@ -4,6 +4,11 @@ spring:
   # 默认激活 profile：dev（开发环境）；生产环境用 SPRING_PROFILES_ACTIVE=prod 覆盖
   profiles:
     default: dev
+  # 文件上传大小限制（v3.8）
+  servlet:
+    multipart:
+      max-file-size: 200MB
+      max-request-size: 210MB
 
   # PostgreSQL 数据源（与 docker/docker-compose.yml 中 postgres-crm 服务保持一致）
   datasource:
@@ -30,6 +35,12 @@ crm:
     secret: ${JWT_SECRET:yzb-crm-2026-jwt-signing-key-must-be-at-least-32-bytes-0123456789}
     # Token 有效期（毫秒），默认 24 小时
     expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+  # 文件存储配置（v3.8）：策略化存储，当前 local 本地文件系统，未来可切 oss
+  storage:
+    strategy: ${STORAGE_STRATEGY:local}
+    local:
+      # 本地文件存储根目录（可用环境变量 STORAGE_ROOT 覆盖，如 /var/lib/crm/storage）
+      root: ${STORAGE_ROOT:./storage}
 
 # LangChain4j / LLM 配置示例（按需启用对应模型提供方，如 OpenAI、DashScope 等）
 # langchain4j:

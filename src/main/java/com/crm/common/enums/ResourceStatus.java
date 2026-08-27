@@ -9,5 +9,9 @@ public enum ResourceStatus {
     /** 已归档 */
     ARCHIVED,
     /** 已删除 */
-    DELETED
+    DELETED,
+    /** 已上传，待处理（文件上传完成，异步处理未执行，v3.8） */
+    UPLOADED,
+    /** 已处理完成（文件内容处理完成，可正常使用，v3.8） */
+    PROCESSED
 }

@@ -36,8 +36,8 @@ public class ResourceResponse {
     /** 文件 MIME 类型 */
     private String fileType;
 
-    /** 文件存储路径 */
-    private String filePath;
+    /** 文件相对抽象存储标识符（如 USR123/2026/08/26/xxx.pdf，不存绝对路径） */
+    private String fileKey;
 
     /** 资源状态 */
     private ResourceStatus status;

@@ -45,7 +45,7 @@ public class CreateResourceRequest {
     @Size(max = 50, message = "文件类型不能超过 50 个字符")
     private String fileType;
 
-    /** 文件存储路径（仅 FILE 类型） */
-    @Size(max = 512, message = "文件路径过长")
-    private String filePath;
+    /** 文件相对抽象存储标识符（仅 FILE 类型，由存储服务生成，不存绝对路径） */
+    @Size(max = 512, message = "文件标识过长")
+    private String fileKey;
 }

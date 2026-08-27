@@ -62,9 +62,9 @@ public class Resource {
     @Column(name = "file_type", length = 50)
     private String fileType;
 
-    /** 文件存储路径 */
-    @Column(name = "file_path", length = 512)
-    private String filePath;
+    /** 文件相对抽象存储标识符 file_key（不存绝对路径，v3.8） */
+    @Column(name = "file_key", length = 512)
+    private String fileKey;
 
     /** 状态：1-正常 2-已归档 3-已删除 */
     @Column(nullable = false)

@@ -87,7 +87,7 @@ public class ResourceService {
         resource.setCreatorUserId(operatorUserId);
         resource.setFileSize(request.getFileSize());
         resource.setFileType(request.getFileType());
-        resource.setFilePath(request.getFilePath());
+        resource.setFileKey(request.getFileKey());
         resource.setStatus(ResourceStatus.ACTIVE);
         resourceRepository.save(resource);
 
@@ -128,7 +128,7 @@ public class ResourceService {
     }
 
     /** 生成资源编号：RES + 时间戳(毫秒) + 3 位随机数 */
-    private String generateResourceNo() {
+    public String generateResourceNo() {
         for (int i = 0; i < 10; i++) {
             String resourceNo = "RES" + DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS").format(LocalDateTime.now())
                     + String.format("%03d", ThreadLocalRandom.current().nextInt(1000));
@@ -178,7 +178,12 @@ public class ResourceService {
         }
     }
 
-    private ResourceResponse toResponse(Resource resource) {
+    /** 存储配额校验（公共入口，供上传等场景复用）：已用存储 + 新文件大小 ≤ 归属主体配额 */
+    public void validateStorageQuota(OwnerType ownerType, Long ownerId, Long fileSize) {
+        checkStorageQuota(ownerType, ownerId, fileSize);
+    }
+
+    public ResourceResponse toResponse(Resource resource) {
         ResourceResponse response = new ResourceResponse();
         response.setResourceId(resource.getResourceId());
         response.setResourceNo(resource.getResourceNo());
@@ -188,7 +193,7 @@ public class ResourceService {
         response.setCreatorUserId(resource.getCreatorUserId());
         response.setFileSize(resource.getFileSize());
         response.setFileType(resource.getFileType());
-        response.setFilePath(resource.getFilePath());
+        response.setFileKey(resource.getFileKey());
         response.setStatus(resource.getStatus());
         response.setCreatedAt(resource.getCreatedAt());
         response.setUpdatedAt(resource.getUpdatedAt());
