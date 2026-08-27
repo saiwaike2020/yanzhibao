@@ -135,44 +135,128 @@ public class CompanyMemberService {
                 "您申请加入的企业拒绝了您的申请。");
     }
 
+    /** 接受企业邀请（UC-037）：成员状态 INVITED → ACTIVE */
+    @Transactional
+    public void acceptInvitation(Long companyId, Long userId) {
+        findActiveCompany(companyId);
+        CompanyMember member = companyMemberRepository.findByCompanyIdAndUserId(companyId, userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
+        if (member.getStatus() != MemberStatus.INVITED) {
+            throw new BusinessException(ErrorCode.APPROVAL_ALREADY_HANDLED);
+        }
+        member.setStatus(MemberStatus.ACTIVE);
+        member.setJoinedAt(LocalDateTime.now());
+        companyMemberRepository.save(member);
+    }
+
     /** 成员列表 */
     public PageResponse<CompanyMemberResponse> listMembers(Long companyId, PageQueryRequest query) {
-        throw new UnsupportedOperationException("TODO");
+        findActiveCompany(companyId);
+        List<CompanyMember> members = companyMemberRepository.findByCompanyId(companyId);
+        int from = (query.getPage() - 1) * query.getSize();
+        List<CompanyMemberResponse> items = members.stream()
+                .skip(from)
+                .limit(query.getSize())
+                .map(this::toResponse)
+                .toList();
+        return PageResponse.of(items, members.size(), query.getPage(), query.getSize());
     }
 
     /** 成员详情 */
     public CompanyMemberResponse getMember(Long companyId, Long memberId) {
-        throw new UnsupportedOperationException("TODO");
+        CompanyMember member = companyMemberRepository.findByCompanyIdAndMemberId(companyId, memberId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
+        return toResponse(member);
     }
 
     /** 变更企业成员角色（设置 / 取消管理员，短信验证，UC-022） */
+    @Transactional
     public void changeMemberRole(Long companyId, Long memberId, ChangeMemberRoleRequest request) {
+        // TODO: 完整实现需短信验证码校验（ADMIN_ROLE_CHANGE 场景）与目标角色合法性校验
         throw new UnsupportedOperationException("TODO");
     }
 
     /** 禁用成员 */
+    @Transactional
     public void disableMember(Long companyId, Long memberId) {
-        throw new UnsupportedOperationException("TODO");
+        CompanyMember member = findMember(companyId, memberId);
+        if (member.getStatus() != MemberStatus.ACTIVE) {
+            throw new BusinessException(ErrorCode.APPROVAL_ALREADY_HANDLED);
+        }
+        member.setStatus(MemberStatus.DISABLED);
+        companyMemberRepository.save(member);
     }
 
     /** 恢复成员 */
+    @Transactional
     public void restoreMember(Long companyId, Long memberId) {
-        throw new UnsupportedOperationException("TODO");
+        CompanyMember member = findMember(companyId, memberId);
+        if (member.getStatus() != MemberStatus.DISABLED) {
+            throw new BusinessException(ErrorCode.APPROVAL_ALREADY_HANDLED);
+        }
+        member.setStatus(MemberStatus.ACTIVE);
+        companyMemberRepository.save(member);
     }
 
-    /** 移除成员 / 撤销权限 (UC-016) */
+    /** 移除成员 / 撤销权限 (UC-016)：逻辑失效，不做物理删除 */
+    @Transactional
     public void removeMember(Long companyId, Long memberId) {
-        throw new UnsupportedOperationException("TODO");
+        CompanyMember member = findMember(companyId, memberId);
+        if (member.getRole() == CompanyMemberRole.OWNER) {
+            throw new BusinessException(ErrorCode.OWNER_ROLE_NOT_CHANGEABLE);
+        }
+        member.setStatus(MemberStatus.EXITED);
+        member.setValidUntil(LocalDateTime.now());
+        companyMemberRepository.save(member);
     }
 
-    /** 用户退出企业 (UC-017) */
+    /** 用户退出企业 (UC-017)：逻辑失效 */
+    @Transactional
     public void leaveCompany(Long companyId, Long userId) {
-        throw new UnsupportedOperationException("TODO");
+        CompanyMember member = companyMemberRepository.findByCompanyIdAndUserId(companyId, userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
+        if (member.getRole() == CompanyMemberRole.OWNER) {
+            throw new BusinessException(ErrorCode.OWNER_ROLE_NOT_CHANGEABLE);
+        }
+        member.setStatus(MemberStatus.EXITED);
+        member.setValidUntil(LocalDateTime.now());
+        companyMemberRepository.save(member);
     }
 
     // -------------------------------------------------------------------------
     // 私有方法
     // -------------------------------------------------------------------------
+
+    /** 查询成员记录，不存在抛异常 */
+    private CompanyMember findMember(Long companyId, Long memberId) {
+        return companyMemberRepository.findByCompanyIdAndMemberId(companyId, memberId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
+    }
+
+    /** 组装成员响应（含用户编号 / 昵称 / 手机号掩码） */
+    private CompanyMemberResponse toResponse(CompanyMember member) {
+        CompanyMemberResponse response = new CompanyMemberResponse();
+        response.setMemberId(member.getMemberId());
+        response.setCompanyId(member.getCompanyId());
+        response.setUserId(member.getUserId());
+        response.setRole(member.getRole());
+        response.setStatus(member.getStatus());
+        response.setJoinedAt(member.getJoinedAt());
+        sysUserRepository.findById(member.getUserId()).ifPresent(u -> {
+            response.setUserNo(u.getUserNo());
+            response.setNickname(u.getNickname());
+            response.setPhoneMasked(maskPhone(u.getPhone()));
+        });
+        return response;
+    }
+
+    /** 手机号掩码：138****1234 */
+    private String maskPhone(String phone) {
+        if (phone == null || phone.length() < 7) {
+            return phone;
+        }
+        return phone.substring(0, 3) + "****" + phone.substring(phone.length() - 4);
+    }
 
     /** 查询 ACTIVE 状态企业，不存在 / 已解散则抛异常 */
     private Company findActiveCompany(Long companyId) {

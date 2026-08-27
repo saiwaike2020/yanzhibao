@@ -60,6 +60,13 @@ public class CompanyMemberController {
         return ApiResponse.ok();
     }
 
+    /** 接受企业邀请（被邀请用户，UC-037） */
+    @PostMapping("/{memberId}/accept")
+    public ApiResponse<Void> acceptInvitation(@PathVariable Long companyId, @PathVariable Long memberId) {
+        companyMemberService.acceptInvitation(companyId, SecurityUtils.getCurrentUserId());
+        return ApiResponse.ok();
+    }
+
     /** 成员列表 */
     @GetMapping
     public ApiResponse<PageResponse<CompanyMemberResponse>> listMembers(

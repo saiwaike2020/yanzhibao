@@ -79,7 +79,11 @@ public enum ErrorCode {
     FILE_EMPTY(1701, "文件内容为空"),
     FILE_TYPE_NOT_ALLOWED(1702, "不支持的文件类型，仅支持 PDF / Word / zip"),
     ZIP_ENTRY_INVALID(1703, "压缩包内容非法"),
-    FILE_PROCESS_FAILED(1704, "文件处理失败");
+    FILE_PROCESS_FAILED(1704, "文件处理失败"),
+
+    // ---- 审计 ----
+    NO_AUDIT_PERMISSION(1801, "无审计日志查看权限"),
+    AUDITOR_NOT_FOUND(1802, "该用户未分配审计权限");
 
     private final int code;
     private final String message;

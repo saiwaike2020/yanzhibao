@@ -54,6 +54,14 @@ public class CompanyMember {
     @Column(name = "joined_at")
     private LocalDateTime joinedAt;
 
+    /** 记录生效起始时间（v3.7） */
+    @Column(name = "valid_from", nullable = false)
+    private LocalDateTime validFrom;
+
+    /** 记录失效时间（v3.7，NULL 表示一直有效；退出/移除设此字段） */
+    @Column(name = "valid_until")
+    private LocalDateTime validUntil;
+
     /** 创建时间 */
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -70,6 +78,9 @@ public class CompanyMember {
         }
         if (updatedAt == null) {
             updatedAt = now;
+        }
+        if (validFrom == null) {
+            validFrom = now;
         }
         if (status == null) {
             status = MemberStatus.ACTIVE;

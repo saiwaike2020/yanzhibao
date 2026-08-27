@@ -47,23 +47,55 @@ public class CompanyService {
     private final AuditPermissionRepository auditPermissionRepository;
 
     /** 创建企业，创建者默认成为 OWNER (UC-005) */
+    @Transactional
     public CompanyResponse createCompany(Long userId, CreateCompanyRequest request) {
-        throw new UnsupportedOperationException("TODO");
+        Company company = new Company();
+        company.setCompanyNo(generateCompanyNo());
+        company.setName(request.getName());
+        company.setLogoUrl(request.getLogoUrl());
+        company.setOwnerUserId(userId);
+        company.setStatus(CompanyStatus.ACTIVE);
+        companyRepository.save(company);
+
+        // 创建者成为企业所有者（OWNER），状态 ACTIVE
+        CompanyMember owner = new CompanyMember();
+        owner.setCompanyId(company.getCompanyId());
+        owner.setUserId(userId);
+        owner.setRole(CompanyMemberRole.OWNER);
+        owner.setStatus(MemberStatus.ACTIVE);
+        owner.setJoinedAt(LocalDateTime.now());
+        companyMemberRepository.save(owner);
+
+        return toResponse(company);
     }
 
     /** 当前用户加入的企业列表 */
     public List<CompanyResponse> listMyCompanies(Long userId) {
-        throw new UnsupportedOperationException("TODO");
+        return companyMemberRepository.findByUserId(userId).stream()
+                .filter(m -> m.getStatus() == MemberStatus.ACTIVE)
+                .map(m -> companyRepository.findById(m.getCompanyId()).orElse(null))
+                .filter(java.util.Objects::nonNull)
+                .map(this::toResponse)
+                .toList();
     }
 
     /** 企业详情 */
     public CompanyResponse getCompanyById(Long companyId) {
-        throw new UnsupportedOperationException("TODO");
+        return toResponse(findCompany(companyId));
     }
 
     /** 更新企业信息（仅企业管理员） */
+    @Transactional
     public CompanyResponse updateCompany(Long companyId, UpdateCompanyRequest request) {
-        throw new UnsupportedOperationException("TODO");
+        Company company = findCompany(companyId);
+        if (request.getName() != null && !request.getName().isBlank()) {
+            company.setName(request.getName());
+        }
+        if (request.getLogoUrl() != null) {
+            company.setLogoUrl(request.getLogoUrl());
+        }
+        companyRepository.save(company);
+        return toResponse(company);
     }
 
     /** 发起企业注销申请（UC-018 / UC-033）：企业所有者操作，创建 DISSOLVE 待审批记录 */
@@ -163,6 +195,32 @@ public class CompanyService {
     // -------------------------------------------------------------------------
     // 私有方法
     // -------------------------------------------------------------------------
+
+    /** 生成企业编号：CPY + 时间戳(毫秒) + 3 位随机数 */
+    private String generateCompanyNo() {
+        for (int i = 0; i < 10; i++) {
+            String companyNo = "CPY" + java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS")
+                    .format(LocalDateTime.now())
+                    + String.format("%03d", java.util.concurrent.ThreadLocalRandom.current().nextInt(1000));
+            if (!companyRepository.existsByCompanyNo(companyNo)) {
+                return companyNo;
+            }
+        }
+        throw new BusinessException(ErrorCode.INTERNAL_ERROR, "企业编号生成失败，请重试");
+    }
+
+    /** 组装企业响应 */
+    private CompanyResponse toResponse(Company company) {
+        CompanyResponse response = new CompanyResponse();
+        response.setCompanyId(company.getCompanyId());
+        response.setCompanyNo(company.getCompanyNo());
+        response.setName(company.getName());
+        response.setLogoUrl(company.getLogoUrl());
+        response.setOwnerUserId(company.getOwnerUserId());
+        response.setStatus(company.getStatus());
+        response.setCreatedAt(company.getCreatedAt());
+        return response;
+    }
 
     /** 查询企业，不存在抛异常 */
     private Company findCompany(Long companyId) {

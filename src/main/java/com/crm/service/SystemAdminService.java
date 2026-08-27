@@ -1,5 +1,9 @@
 package com.crm.service;
 
+import com.crm.common.enums.AuditScope;
+import com.crm.common.enums.SmsScene;
+import com.crm.common.enums.SystemRole;
+import com.crm.common.enums.UserStatus;
 import com.crm.common.exception.BusinessException;
 import com.crm.common.exception.ErrorCode;
 import com.crm.dto.admin.AssignAuditorRequest;
@@ -14,14 +18,27 @@ import com.crm.dto.audit.AuditLogResponse;
 import com.crm.dto.common.PageQueryRequest;
 import com.crm.dto.common.PageResponse;
 import com.crm.dto.user.UserProfileResponse;
+import com.crm.entity.AuditLog;
+import com.crm.entity.AuditPermission;
 import com.crm.entity.StorageQuota;
+import com.crm.entity.SysUser;
 import com.crm.entity.SystemSetting;
+import com.crm.repository.AuditLogRepository;
+import com.crm.repository.AuditPermissionRepository;
 import com.crm.repository.StorageQuotaRepository;
+import com.crm.repository.SysUserRepository;
 import com.crm.repository.SystemSettingRepository;
+import com.crm.security.SecurityUtils;
+import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 /**
  * 系统管理服务（系统管理员专属，系统级最高权限）。
@@ -38,55 +55,116 @@ public class SystemAdminService {
 
     private final SystemSettingRepository systemSettingRepository;
     private final StorageQuotaRepository storageQuotaRepository;
+    private final SysUserRepository sysUserRepository;
+    private final AuditPermissionRepository auditPermissionRepository;
+    private final AuditLogRepository auditLogRepository;
+    private final SmsVerificationService smsVerificationService;
 
     /** 用户列表（分页 / 关键字查询） */
     public PageResponse<UserProfileResponse> listUsers(PageQueryRequest query) {
-        throw new UnsupportedOperationException("TODO");
+        PageRequest pageable = PageRequest.of(query.getPage() - 1, query.getSize());
+        Page<SysUser> page = sysUserRepository.searchByKeyword(query.getKeyword(), pageable);
+        return PageResponse.of(
+                page.getContent().stream().map(this::toUserProfile).toList(),
+                page.getTotalElements(), query.getPage(), query.getSize());
     }
 
     /** 用户详情 */
     public UserProfileResponse getUserDetail(Long userId) {
-        throw new UnsupportedOperationException("TODO");
+        return toUserProfile(findUser(userId));
     }
 
     /** 禁用用户 */
+    @Transactional
     public void disableUser(Long userId) {
-        throw new UnsupportedOperationException("TODO");
+        SysUser user = findUser(userId);
+        user.setStatus(UserStatus.DISABLED);
+        sysUserRepository.save(user);
     }
 
     /** 恢复用户 */
+    @Transactional
     public void restoreUser(Long userId) {
-        throw new UnsupportedOperationException("TODO");
+        SysUser user = findUser(userId);
+        user.setStatus(UserStatus.ACTIVE);
+        sysUserRepository.save(user);
     }
 
     /** 注销用户 */
+    @Transactional
     public void cancelUser(Long userId) {
-        throw new UnsupportedOperationException("TODO");
+        SysUser user = findUser(userId);
+        user.setStatus(UserStatus.CANCELLED);
+        user.setDeletedAt(LocalDateTime.now());
+        sysUserRepository.save(user);
     }
 
     /** 审计人员列表 */
     public List<AuditorResponse> listAuditors() {
-        throw new UnsupportedOperationException("TODO");
+        return sysUserRepository.findBySystemRole(SystemRole.AUDITOR).stream()
+                .map(u -> toAuditorResponse(u, auditPermissionRepository.findByUserId(u.getUserId()).orElse(null)))
+                .toList();
     }
 
     /** 分配审计人员权限及查看范围（短信验证，UC-019） */
+    @Transactional
     public void assignAuditor(AssignAuditorRequest request) {
-        throw new UnsupportedOperationException("TODO");
+        Long operatorUserId = SecurityUtils.getCurrentUserId();
+        verifyAdminSms(operatorUserId, request.getSmsCode());
+
+        SysUser target = findUser(request.getUserId());
+        if (auditPermissionRepository.existsByUserId(target.getUserId())) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "该用户已分配审计权限");
+        }
+
+        AuditPermission permission = new AuditPermission();
+        permission.setUserId(target.getUserId());
+        permission.setAuditScope(request.getAuditScope());
+        permission.setGrantedBy(operatorUserId);
+        auditPermissionRepository.save(permission);
+
+        target.setSystemRole(SystemRole.AUDITOR);
+        sysUserRepository.save(target);
     }
 
     /** 调整审计人员权限 / 查看范围（短信验证） */
+    @Transactional
     public void updateAuditor(Long userId, UpdateAuditorRequest request) {
-        throw new UnsupportedOperationException("TODO");
+        Long operatorUserId = SecurityUtils.getCurrentUserId();
+        verifyAdminSms(operatorUserId, request.getSmsCode());
+
+        AuditPermission permission = auditPermissionRepository.findByUserId(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.AUDITOR_NOT_FOUND));
+        permission.setAuditScope(request.getAuditScope());
+        permission.setGrantedBy(operatorUserId);
+        auditPermissionRepository.save(permission);
     }
 
     /** 撤销审计角色 */
+    @Transactional
     public void revokeAuditor(Long userId) {
-        throw new UnsupportedOperationException("TODO");
+        AuditPermission permission = auditPermissionRepository.findByUserId(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.AUDITOR_NOT_FOUND));
+        auditPermissionRepository.delete(permission);
+
+        SysUser user = findUser(userId);
+        user.setSystemRole(SystemRole.NONE);
+        sysUserRepository.save(user);
     }
 
     /** 查看全部审计日志 */
     public PageResponse<AuditLogResponse> listAllAuditLogs(AuditLogQueryRequest query) {
-        throw new UnsupportedOperationException("TODO");
+        List<AuditLog> filtered = auditLogRepository.findAll().stream()
+                .filter(log -> matchQuery(log, query))
+                .sorted(Comparator.comparing(AuditLog::getCreatedAt).reversed())
+                .toList();
+        int from = (query.getPage() - 1) * query.getSize();
+        List<AuditLogResponse> items = filtered.stream()
+                .skip(from)
+                .limit(query.getSize())
+                .map(this::toAuditLogResponse)
+                .toList();
+        return PageResponse.of(items, filtered.size(), query.getPage(), query.getSize());
     }
 
     /** 查询系统参数 */
@@ -154,6 +232,97 @@ public class SystemAdminService {
     // -------------------------------------------------------------------------
     // 私有方法
     // -------------------------------------------------------------------------
+
+    /** 系统管理员短信二次验证（UC-019，场景 AUDITOR_ASSIGN） */
+    private void verifyAdminSms(Long operatorUserId, String smsCode) {
+        SysUser operator = findUser(operatorUserId);
+        if (!StringUtils.hasText(operator.getPhone())) {
+            throw new BusinessException(ErrorCode.SMS_MISSING_PHONE);
+        }
+        smsVerificationService.verifyCode(operator.getPhone(), SmsScene.AUDITOR_ASSIGN, smsCode);
+    }
+
+    /** 查询用户，不存在抛异常 */
+    private SysUser findUser(Long userId) {
+        return sysUserRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "用户不存在"));
+    }
+
+    /** 组装用户资料响应 */
+    private UserProfileResponse toUserProfile(SysUser user) {
+        UserProfileResponse response = new UserProfileResponse();
+        response.setUserId(user.getUserId());
+        response.setUserNo(user.getUserNo());
+        response.setPhoneMasked(maskPhone(user.getPhone()));
+        response.setNickname(user.getNickname());
+        response.setAvatarUrl(user.getAvatarUrl());
+        response.setStatus(user.getStatus());
+        response.setSystemRole(user.getSystemRole());
+        response.setCreatedAt(user.getCreatedAt());
+        return response;
+    }
+
+    /** 组装审计人员响应 */
+    private AuditorResponse toAuditorResponse(SysUser user, AuditPermission permission) {
+        AuditorResponse response = new AuditorResponse();
+        response.setUserId(user.getUserId());
+        response.setUserNo(user.getUserNo());
+        response.setNickname(user.getNickname());
+        response.setPhoneMasked(maskPhone(user.getPhone()));
+        if (permission != null) {
+            response.setAuditScope(permission.getAuditScope());
+            response.setScopeDetails(permission.getScopeDetails());
+            response.setGrantedBy(permission.getGrantedBy());
+            response.setStatus(1);
+            response.setCreatedAt(permission.getCreatedAt());
+        }
+        return response;
+    }
+
+    /** 组装审计日志响应 */
+    private AuditLogResponse toAuditLogResponse(AuditLog log) {
+        AuditLogResponse response = new AuditLogResponse();
+        response.setLogId(log.getLogId());
+        response.setUserId(log.getUserId());
+        response.setUserType(log.getUserType());
+        response.setCompanyId(log.getCompanyId());
+        response.setAction(log.getAction());
+        response.setResourceType(log.getResourceType());
+        response.setResourceId(log.getResourceId());
+        response.setDetail(log.getDetail());
+        response.setIpAddress(log.getIpAddress());
+        response.setUserAgent(log.getUserAgent());
+        response.setCreatedAt(log.getCreatedAt());
+        return response;
+    }
+
+    /** 审计日志查询条件匹配 */
+    private boolean matchQuery(AuditLog log, AuditLogQueryRequest q) {
+        if (q.getUserId() != null && !q.getUserId().equals(log.getUserId())) {
+            return false;
+        }
+        if (q.getCompanyId() != null && !q.getCompanyId().equals(log.getCompanyId())) {
+            return false;
+        }
+        if (StringUtils.hasText(q.getAction()) && !q.getAction().equals(log.getAction())) {
+            return false;
+        }
+        if (q.getStartTime() != null && log.getCreatedAt() != null && log.getCreatedAt().isBefore(q.getStartTime())) {
+            return false;
+        }
+        if (q.getEndTime() != null && log.getCreatedAt() != null && log.getCreatedAt().isAfter(q.getEndTime())) {
+            return false;
+        }
+        return true;
+    }
+
+    /** 手机号掩码：138****1234 */
+    private String maskPhone(String phone) {
+        if (phone == null || phone.length() < 7) {
+            return phone;
+        }
+        return phone.substring(0, 3) + "****" + phone.substring(phone.length() - 4);
+    }
 
     /** 存储配额值校验：必须为正整数 */
     private void validateQuotaValue(String value) {

@@ -104,7 +104,25 @@ public class AuthService {
 
     /** 手机号 + 密码登录 (UC-003) */
     public AuthTokenResponse loginByPhonePassword(PhonePasswordLoginRequest request) {
-        throw new UnsupportedOperationException("TODO");
+        String phone = request.getPhone();
+        UserAuth auth = userAuthRepository.findByAuthTypeAndIdentifier(AuthType.PHONE, phone)
+                .orElseThrow(() -> new BusinessException(ErrorCode.LOGIN_FAILED));
+        if (!passwordEncoder.matches(request.getPassword(), auth.getCredential())) {
+            throw new BusinessException(ErrorCode.LOGIN_FAILED);
+        }
+        SysUser user = sysUserRepository.findByPhone(phone)
+                .orElseThrow(() -> new BusinessException(ErrorCode.LOGIN_FAILED));
+        if (user.getDeletedAt() != null) {
+            throw new BusinessException(ErrorCode.LOGIN_FAILED);
+        }
+        if (user.getStatus() == UserStatus.DISABLED) {
+            throw new BusinessException(ErrorCode.ACCOUNT_DISABLED);
+        }
+        if (user.getStatus() == UserStatus.CANCELLED) {
+            throw new BusinessException(ErrorCode.ACCOUNT_CANCELLED);
+        }
+        log.info("手机号密码登录成功: userId={}, phone={}", user.getUserId(), maskPhone(phone));
+        return buildAuthToken(user);
     }
 
     /** 生成微信扫码登录二维码（含一次性 state） */
@@ -133,8 +151,33 @@ public class AuthService {
     }
 
     /** 设置 / 修改登录密码 */
+    @Transactional
     public void setPassword(Long userId, SetPasswordRequest request) {
-        throw new UnsupportedOperationException("TODO");
+        SysUser user = sysUserRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "用户不存在"));
+        if (!StringUtils.hasText(user.getPhone())) {
+            throw new BusinessException(ErrorCode.SMS_MISSING_PHONE);
+        }
+        UserAuth auth = userAuthRepository.findByAuthTypeAndIdentifier(AuthType.PHONE, user.getPhone())
+                .orElseGet(() -> {
+                    UserAuth a = new UserAuth();
+                    a.setUserId(userId);
+                    a.setAuthType(AuthType.PHONE);
+                    a.setIdentifier(user.getPhone());
+                    return a;
+                });
+        // 修改密码时校验原密码
+        if (StringUtils.hasText(request.getOldPassword())) {
+            if (auth.getCredential() == null
+                    || !passwordEncoder.matches(request.getOldPassword(), auth.getCredential())) {
+                throw new BusinessException(ErrorCode.LOGIN_FAILED);
+            }
+        }
+        auth.setCredential(passwordEncoder.encode(request.getNewPassword()));
+        auth.setVerifiedAt(LocalDateTime.now());
+        auth.setStatus(1);
+        userAuthRepository.save(auth);
+        log.info("登录密码已设置: userId={}", userId);
     }
 
     /**
